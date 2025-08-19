@@ -3,7 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import OpenAI from "openai";
 import { v4 as uuidv4 } from "uuid";
-import nodemailer from "nodemailer"; 
+import nodemailer from "nodemailer";
 
 dotenv.config();
 
@@ -11,7 +11,11 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 const CORS_ORIGIN = process.env.CORS_ORIGIN || "*";
 
-app.use(cors({ origin: CORS_ORIGIN === "*" ? true : CORS_ORIGIN }));
+// CORS config
+app.use(cors({
+  origin: CORS_ORIGIN === "*" ? true : CORS_ORIGIN,
+  credentials: true
+}));
 app.use(express.json({ limit: "4mb" }));
 
 // Health check
@@ -24,14 +28,14 @@ const openai = new OpenAI({
   apiKey: process.env.OPENROUTER_API_KEY,
   baseURL: process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1",
   defaultHeaders: {
-    "HTTP-Referer": process.env.PUBLIC_BASE_URL || "http://localhost:" + PORT,
+    "HTTP-Referer": process.env.PUBLIC_BASE_URL || `http://localhost:${PORT}`,
     "X-Title": process.env.APP_TITLE || "AI Meeting Notes"
   }
 });
 
 const shares = new Map();
 
-// AI summary endpoint
+// Summarize API
 app.post("/api/summarize", async (req, res) => {
   try {
     const { transcript, instruction } = req.body || {};
@@ -79,25 +83,28 @@ ${transcript}
   }
 });
 
-// Create share link
+// Share link API
 app.post("/api/create-share", (req, res) => {
   const { content } = req.body || {};
   if (!content || typeof content !== "string") {
     return res.status(400).json({ error: "content (string) is required" });
   }
+
   const id = uuidv4();
   shares.set(id, { content, createdAt: Date.now() });
+
   const base = process.env.PUBLIC_BASE_URL || `http://localhost:${PORT}`;
   res.json({ id, url: `${base}/share/${id}` });
 });
 
-// View share
+// View shared summary
 app.get("/share/:id", (req, res) => {
   const { id } = req.params;
   const entry = shares.get(id);
   if (!entry) {
     return res.status(404).send("<h1>Not Found</h1><p>This share link is invalid or expired.</p>");
   }
+
   const escape = (s) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
   const html = `<!doctype html>
   <html>
@@ -123,11 +130,12 @@ app.get("/share/:id", (req, res) => {
     </div>
   </body>
   </html>`;
+
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.send(html);
 });
 
-// ✅ Send email using Nodemailer
+// Email API
 app.post("/api/send-email", async (req, res) => {
   try {
     const { to, subject, content } = req.body || {};
@@ -136,15 +144,14 @@ app.post("/api/send-email", async (req, res) => {
     }
 
     const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: process.env.SMTP_PORT,
-  secure: false, // use TLS
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS
-  }
-});
-
+      host: process.env.SMTP_HOST,
+      port: process.env.SMTP_PORT,
+      secure: false,
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS
+      }
+    });
 
     const info = await transporter.sendMail({
       from: process.env.EMAIL_USER,
@@ -160,6 +167,7 @@ app.post("/api/send-email", async (req, res) => {
   }
 });
 
+// Start server
 app.listen(PORT, () => {
-  console.log(`Server listening on http://localhost:${PORT}`);
+  console.log(`✅ Server listening on port ${PORT}`);
 });
