@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3001'
+const API_BASE = import.meta.env.VITE_API_BASE || 'https://ai-notes-summarizer-backend-n0ih.onrender.com'
 
 // Notification component
 const Notification = ({ message, type, show, onClose }: {
