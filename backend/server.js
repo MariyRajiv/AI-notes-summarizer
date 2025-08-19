@@ -3,7 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import OpenAI from "openai";
 import { v4 as uuidv4 } from "uuid";
-import nodemailer from "nodemailer"; // ✅ Nodemailer instead of EmailJS
+import nodemailer from "nodemailer"; 
 
 dotenv.config();
 
