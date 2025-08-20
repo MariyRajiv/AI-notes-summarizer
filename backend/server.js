@@ -7,7 +7,7 @@ import nodemailer from "nodemailer";
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 5000;
 const CORS_ORIGIN = process.env.CORS_ORIGIN || "*";
 
 // CORS config
@@ -25,9 +25,8 @@ app.get("/api/health", (req, res) => {
 });
 
 // ✅ Hugging Face Summarization
-// ✅ Hugging Face Summarization
 async function summarizeWithHF(text) {
-  const model = process.env.HF_MODEL || "facebook/bart-large-cnn";
+  const model = process.env.HF_MODEL || "facebook/bart-large-cnn"; 
   const url = `https://api-inference.huggingface.co/models/${model}`;
 
   const response = await fetch(url, {
@@ -37,13 +36,17 @@ async function summarizeWithHF(text) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      inputs: text,   // ✅ only "inputs"
+      inputs: text,
+      parameters: {
+        max_length: 300,
+        min_length: 60,
+        do_sample: false,
+      },
     }),
   });
 
   if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`HF API failed: ${response.status} - ${errorText}`);
+    throw new Error(`HF API failed: ${response.statusText}`);
   }
 
   const data = await response.json();
@@ -52,7 +55,6 @@ async function summarizeWithHF(text) {
   }
   return JSON.stringify(data); // fallback
 }
-
 
 // ✅ Summarize API
 app.post("/api/summarize", async (req, res) => {
