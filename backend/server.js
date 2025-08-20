@@ -12,10 +12,12 @@ const PORT = process.env.PORT || 3001;
 const CORS_ORIGIN = process.env.CORS_ORIGIN || "*";
 
 // CORS config
-app.use(cors({
-  origin: CORS_ORIGIN === "*" ? true : CORS_ORIGIN,
-  credentials: true
-}));
+app.use(
+  cors({
+    origin: CORS_ORIGIN === "*" ? true : CORS_ORIGIN,
+    credentials: true,
+  })
+);
 app.use(express.json({ limit: "4mb" }));
 
 // Health check
@@ -23,14 +25,9 @@ app.get("/api/health", (req, res) => {
   res.json({ ok: true, time: new Date().toISOString() });
 });
 
-// OpenAI-compatible client
+// ✅ OpenAI client (direct, not OpenRouter)
 const openai = new OpenAI({
-  apiKey: process.env.OPENROUTER_API_KEY,
-  baseURL: process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1",
-  defaultHeaders: {
-    "HTTP-Referer": process.env.PUBLIC_BASE_URL || `http://localhost:${PORT}`,
-    "X-Title": process.env.APP_TITLE || "AI Meeting Notes"
-  }
+  apiKey: process.env.OPENAI_API_KEY,
 });
 
 const shares = new Map();
@@ -39,13 +36,20 @@ const shares = new Map();
 app.post("/api/summarize", async (req, res) => {
   try {
     const { transcript, instruction } = req.body || {};
-    if (!transcript || typeof transcript !== "string" || transcript.trim().length < 10) {
-      return res.status(400).json({ error: "Provide a transcript with at least 10 characters." });
+    if (
+      !transcript ||
+      typeof transcript !== "string" ||
+      transcript.trim().length < 10
+    ) {
+      return res
+        .status(400)
+        .json({ error: "Provide a transcript with at least 10 characters." });
     }
 
-    const userInstruction = typeof instruction === "string" && instruction.trim().length > 0
-      ? instruction.trim()
-      : "Summarize the following transcript into concise bullet points. Include an 'Action Items' section at the end.";
+    const userInstruction =
+      typeof instruction === "string" && instruction.trim().length > 0
+        ? instruction.trim()
+        : "Summarize the following transcript into concise bullet points. Include an 'Action Items' section at the end.";
 
     const systemPrompt = `You are an assistant that writes clean, structured, business-ready meeting summaries.
 - Follow the user's instruction style strictly.
@@ -60,15 +64,16 @@ Transcript:
 ${transcript}
 -----------------`;
 
-    const model = process.env.OPENROUTER_MODEL || "deepseek/deepseek-r1:free";
+    // ✅ Use OpenAI model
+    const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
 
     const completion = await openai.chat.completions.create({
       model,
       temperature: 0.2,
       messages: [
         { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt }
-      ]
+        { role: "user", content: userPrompt },
+      ],
     });
 
     const summary = completion?.choices?.[0]?.message?.content?.trim();
@@ -79,7 +84,9 @@ ${transcript}
     res.json({ summary });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: err?.message || "Failed to generate summary" });
+    res
+      .status(500)
+      .json({ error: err?.message || "Failed to generate summary" });
   }
 });
 
@@ -102,10 +109,13 @@ app.get("/share/:id", (req, res) => {
   const { id } = req.params;
   const entry = shares.get(id);
   if (!entry) {
-    return res.status(404).send("<h1>Not Found</h1><p>This share link is invalid or expired.</p>");
+    return res
+      .status(404)
+      .send("<h1>Not Found</h1><p>This share link is invalid or expired.</p>");
   }
 
-  const escape = (s) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  const escape = (s) =>
+    s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
   const html = `<!doctype html>
   <html>
   <head>
@@ -126,7 +136,9 @@ app.get("/share/:id", (req, res) => {
       <div class="card">
         <pre>${escape(entry.content)}</pre>
       </div>
-      <p class="muted">Created: ${new Date(entry.createdAt).toLocaleString()}</p>
+      <p class="muted">Created: ${new Date(
+        entry.createdAt
+      ).toLocaleString()}</p>
     </div>
   </body>
   </html>`;
@@ -140,7 +152,9 @@ app.post("/api/send-email", async (req, res) => {
   try {
     const { to, subject, content } = req.body || {};
     if (!to || !content) {
-      return res.status(400).json({ error: "Fields 'to' and 'content' are required." });
+      return res
+        .status(400)
+        .json({ error: "Fields 'to' and 'content' are required." });
     }
 
     const transporter = nodemailer.createTransport({
@@ -149,15 +163,15 @@ app.post("/api/send-email", async (req, res) => {
       secure: false,
       auth: {
         user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS
-      }
+        pass: process.env.SMTP_PASS,
+      },
     });
 
     const info = await transporter.sendMail({
       from: process.env.EMAIL_USER,
       to,
       subject: subject || "Meeting Summary",
-      text: content
+      text: content,
     });
 
     res.json({ ok: true, messageId: info.messageId });
