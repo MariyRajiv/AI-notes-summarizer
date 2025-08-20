@@ -2,7 +2,6 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import fetch from "node-fetch";
-import { v4 as uuidv4 } from "uuid";
 import nodemailer from "nodemailer";
 
 dotenv.config();
@@ -33,7 +32,7 @@ async function summarizeWithHF(text) {
   const response = await fetch(url, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${process.env.HF_TOKEN}`, // ✅ use HF_TOKEN
+      Authorization: `Bearer ${process.env.HF_TOKEN}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
@@ -57,7 +56,7 @@ async function summarizeWithHF(text) {
   return JSON.stringify(data); // fallback
 }
 
-// Summarize API
+// ✅ Summarize API
 app.post("/api/summarize", async (req, res) => {
   try {
     const { transcript, instruction } = req.body || {};
@@ -78,8 +77,8 @@ app.post("/api/summarize", async (req, res) => {
   }
 });
 
-// ✅ Email Share API
-app.post("/api/share", async (req, res) => {
+// ✅ Email Share API (matches frontend route)
+app.post("/api/send-email", async (req, res) => {
   try {
     const { email, summary } = req.body;
     if (!email || !summary) {
