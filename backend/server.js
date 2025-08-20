@@ -38,7 +38,7 @@ async function summarizeWithHF(text) {
     body: JSON.stringify({
       inputs: text,
       parameters: {
-        max_length: 300,
+        max_length: 800,
         min_length: 60,
         do_sample: false,
       },
