@@ -1,7 +1,7 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import fetch from "node-fetch"; // ✅ needed for HF API
+import fetch from "node-fetch";
 import { v4 as uuidv4 } from "uuid";
 import nodemailer from "nodemailer";
 
@@ -25,15 +25,15 @@ app.get("/api/health", (req, res) => {
   res.json({ ok: true, time: new Date().toISOString() });
 });
 
-// ✅ Hugging Face summarization function
+// ✅ Hugging Face Summarization
 async function summarizeWithHF(text) {
-  const model = process.env.HF_MODEL || "facebook/bart-large-cnn"; // default summarizer
+  const model = process.env.HF_MODEL || "facebook/bart-large-cnn"; 
   const url = `https://api-inference.huggingface.co/models/${model}`;
 
   const response = await fetch(url, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${process.env.HF_TOKEN}`,
+      Authorization: `Bearer ${process.env.HF_TOKEN}`, // ✅ use HF_TOKEN
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
@@ -54,99 +54,36 @@ async function summarizeWithHF(text) {
   if (Array.isArray(data) && data[0]?.summary_text) {
     return data[0].summary_text;
   }
-  return JSON.stringify(data); // fallback for debugging
+  return JSON.stringify(data); // fallback
 }
 
-const shares = new Map();
-
-// ✅ Summarize API
+// Summarize API
 app.post("/api/summarize", async (req, res) => {
   try {
     const { transcript, instruction } = req.body || {};
-    if (!transcript || typeof transcript !== "string" || transcript.trim().length < 10) {
-      return res
-        .status(400)
-        .json({ error: "Provide a transcript with at least 10 characters." });
+    if (!transcript || transcript.trim().length < 10) {
+      return res.status(400).json({ error: "Transcript too short." });
     }
 
-    const userInstruction =
-      typeof instruction === "string" && instruction.trim().length > 0
-        ? instruction.trim()
-        : "Summarize the following transcript into concise bullet points. Include an 'Action Items' section at the end.";
+    const instructionText =
+      instruction?.trim() || "Summarize the following transcript.";
 
-    const combinedText = `${userInstruction}\n\n${transcript}`;
+    const combinedText = `${instructionText}\n\n${transcript}`;
     const summary = await summarizeWithHF(combinedText);
 
     res.json({ summary });
   } catch (err) {
     console.error("Summarize error:", err);
-    res.status(500).json({ error: err?.message || "Failed to generate summary" });
+    res.status(500).json({ error: err.message });
   }
 });
 
-// Share link API
-app.post("/api/create-share", (req, res) => {
-  const { content } = req.body || {};
-  if (!content || typeof content !== "string") {
-    return res.status(400).json({ error: "content (string) is required" });
-  }
-
-  const id = uuidv4();
-  shares.set(id, { content, createdAt: Date.now() });
-
-  const base = process.env.PUBLIC_BASE_URL || `http://localhost:${PORT}`;
-  res.json({ id, url: `${base}/share/${id}` });
-});
-
-// View shared summary
-app.get("/share/:id", (req, res) => {
-  const { id } = req.params;
-  const entry = shares.get(id);
-  if (!entry) {
-    return res
-      .status(404)
-      .send("<h1>Not Found</h1><p>This share link is invalid or expired.</p>");
-  }
-
-  const escape = (s) =>
-    s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
-  const html = `<!doctype html>
-  <html>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Shared Summary</title>
-    <style>
-      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 40px; }
-      pre { white-space: pre-wrap; word-wrap: break-word; }
-      .wrap { max-width: 900px; margin: 0 auto; }
-      .card { border: 1px solid #ddd; border-radius: 10px; padding: 16px; }
-      .muted { color: #666; font-size: 12px; }
-    </style>
-  </head>
-  <body>
-    <div class="wrap">
-      <h1>Shared Summary</h1>
-      <div class="card">
-        <pre>${escape(entry.content)}</pre>
-      </div>
-      <p class="muted">Created: ${new Date(entry.createdAt).toLocaleString()}</p>
-    </div>
-  </body>
-  </html>`;
-
-  res.setHeader("Content-Type", "text/html; charset=utf-8");
-  res.send(html);
-});
-
-// ✅ Email API
-app.post("/api/send-email", async (req, res) => {
+// ✅ Email Share API
+app.post("/api/share", async (req, res) => {
   try {
-    const { to, subject, content } = req.body || {};
-    if (!to || !content) {
-      return res
-        .status(400)
-        .json({ error: "Fields 'to' and 'content' are required." });
+    const { email, summary } = req.body;
+    if (!email || !summary) {
+      return res.status(400).json({ error: "Email and summary required." });
     }
 
     const transporter = nodemailer.createTransport({
@@ -159,21 +96,21 @@ app.post("/api/send-email", async (req, res) => {
       },
     });
 
-    const info = await transporter.sendMail({
+    await transporter.sendMail({
       from: process.env.EMAIL_USER,
-      to,
-      subject: subject || "Meeting Summary",
-      text: content,
+      to: email,
+      subject: "AI Meeting Notes Summary",
+      text: summary,
     });
 
-    res.json({ ok: true, messageId: info.messageId });
+    res.json({ success: true, message: "Email sent successfully!" });
   } catch (err) {
-    console.error("Mail error:", err);
-    res.status(500).json({ error: err?.message || "Failed to send email" });
+    console.error("Email error:", err);
+    res.status(500).json({ error: "Failed to send email." });
   }
 });
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`✅ Server listening on port ${PORT}`);
+  console.log(`✅ Server running on port ${PORT}`);
 });
