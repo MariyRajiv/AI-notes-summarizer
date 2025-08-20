@@ -1,7 +1,7 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import OpenAI from "openai";
+import fetch from "node-fetch";
 import { v4 as uuidv4 } from "uuid";
 import nodemailer from "nodemailer";
 
@@ -25,163 +25,94 @@ app.get("/api/health", (req, res) => {
   res.json({ ok: true, time: new Date().toISOString() });
 });
 
-// ✅ OpenAI client (direct, not OpenRouter)
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// ✅ Hugging Face API call
+async function summarizeWithHF(text) {
+  const model = process.env.HF_MODEL || "facebook/bart-large-cnn"; // default summarizer
+  const url = `https://api-inference.huggingface.co/models/${model}`;
 
-const shares = new Map();
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.HF_TOKEN}`, // FIXED
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      inputs: text,
+      parameters: {
+        max_length: 300,
+        min_length: 60,
+        do_sample: false,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`HF API failed: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  if (Array.isArray(data) && data[0]?.summary_text) {
+    return data[0].summary_text;
+  }
+  return JSON.stringify(data); // fallback
+}
 
 // Summarize API
 app.post("/api/summarize", async (req, res) => {
   try {
     const { transcript, instruction } = req.body || {};
-    if (
-      !transcript ||
-      typeof transcript !== "string" ||
-      transcript.trim().length < 10
-    ) {
-      return res
-        .status(400)
-        .json({ error: "Provide a transcript with at least 10 characters." });
+    if (!transcript || transcript.trim().length < 10) {
+      return res.status(400).json({ error: "Transcript too short." });
     }
 
-    const userInstruction =
-      typeof instruction === "string" && instruction.trim().length > 0
-        ? instruction.trim()
-        : "Summarize the following transcript into concise bullet points. Include an 'Action Items' section at the end.";
+    const instructionText =
+      instruction?.trim() || "Summarize the following transcript.";
 
-    const systemPrompt = `You are an assistant that writes clean, structured, business-ready meeting summaries.
-- Follow the user's instruction style strictly.
-- Prefer bullet points, section headers, and clear action items with owners and due dates when available.
-- Keep it concise but complete.
-- If transcript seems like a call transcript, infer participants and summarize decisions.`;
-
-    const userPrompt = `Instruction: ${userInstruction}
-
-Transcript:
------------------
-${transcript}
------------------`;
-
-    // ✅ Use OpenAI model
-    const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
-
-    const completion = await openai.chat.completions.create({
-      model,
-      temperature: 0.2,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-    });
-
-    const summary = completion?.choices?.[0]?.message?.content?.trim();
-    if (!summary) {
-      return res.status(500).json({ error: "No summary generated." });
-    }
+    const combinedText = `${instructionText}\n\n${transcript}`;
+    const summary = await summarizeWithHF(combinedText);
 
     res.json({ summary });
   } catch (err) {
-    console.error(err);
-    res
-      .status(500)
-      .json({ error: err?.message || "Failed to generate summary" });
+    console.error("Summarize error:", err);
+    res.status(500).json({ error: err.message });
   }
 });
 
-// Share link API
-app.post("/api/create-share", (req, res) => {
-  const { content } = req.body || {};
-  if (!content || typeof content !== "string") {
-    return res.status(400).json({ error: "content (string) is required" });
-  }
-
-  const id = uuidv4();
-  shares.set(id, { content, createdAt: Date.now() });
-
-  const base = process.env.PUBLIC_BASE_URL || `http://localhost:${PORT}`;
-  res.json({ id, url: `${base}/share/${id}` });
-});
-
-// View shared summary
-app.get("/share/:id", (req, res) => {
-  const { id } = req.params;
-  const entry = shares.get(id);
-  if (!entry) {
-    return res
-      .status(404)
-      .send("<h1>Not Found</h1><p>This share link is invalid or expired.</p>");
-  }
-
-  const escape = (s) =>
-    s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
-  const html = `<!doctype html>
-  <html>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Shared Summary</title>
-    <style>
-      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 40px; }
-      pre { white-space: pre-wrap; word-wrap: break-word; }
-      .wrap { max-width: 900px; margin: 0 auto; }
-      .card { border: 1px solid #ddd; border-radius: 10px; padding: 16px; }
-      .muted { color: #666; font-size: 12px; }
-    </style>
-  </head>
-  <body>
-    <div class="wrap">
-      <h1>Shared Summary</h1>
-      <div class="card">
-        <pre>${escape(entry.content)}</pre>
-      </div>
-      <p class="muted">Created: ${new Date(
-        entry.createdAt
-      ).toLocaleString()}</p>
-    </div>
-  </body>
-  </html>`;
-
-  res.setHeader("Content-Type", "text/html; charset=utf-8");
-  res.send(html);
+// ✅ Nodemailer setup
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST,
+  port: parseInt(process.env.SMTP_PORT, 10),
+  secure: false, // use TLS
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+  },
 });
 
 // Email API
-app.post("/api/send-email", async (req, res) => {
+app.post("/api/email", async (req, res) => {
   try {
-    const { to, subject, content } = req.body || {};
-    if (!to || !content) {
-      return res
-        .status(400)
-        .json({ error: "Fields 'to' and 'content' are required." });
+    const { to, subject, text } = req.body;
+    if (!to || !subject || !text) {
+      return res.status(400).json({ error: "Missing email fields." });
     }
 
-    const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: process.env.SMTP_PORT,
-      secure: false,
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      },
-    });
-
-    const info = await transporter.sendMail({
+    const mailOptions = {
       from: process.env.EMAIL_USER,
       to,
-      subject: subject || "Meeting Summary",
-      text: content,
-    });
+      subject,
+      text,
+    };
 
-    res.json({ ok: true, messageId: info.messageId });
+    await transporter.sendMail(mailOptions);
+    res.json({ success: true, message: "Email sent!" });
   } catch (err) {
-    console.error("Mail error:", err);
-    res.status(500).json({ error: err?.message || "Failed to send email" });
+    console.error("Email error:", err);
+    res.status(500).json({ error: err.message });
   }
 });
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`✅ Server listening on port ${PORT}`);
+  console.log(`✅ Server running on port ${PORT}`);
 });
