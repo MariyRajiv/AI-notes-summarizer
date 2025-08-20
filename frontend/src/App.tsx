@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'https://ai-notes-summarizer-backend-n0ih.onrender.com'
+const API_BASE = import.meta.env.VITE_API_BASE ||'https://ai-notes-summarizer-backend-n0ih.onrender.com'
 
 // Notification component
 const Notification = ({ message, type, show, onClose }: {
@@ -97,25 +97,24 @@ export default function App() {
   }
 
   const sendEmail = async () => {
-    setStatus('📧 Sending email...')
-    try {
-      const res = await fetch(`${API_BASE}/api/send-email`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to, subject, content: edited })
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        throw new Error(data?.error || 'Failed to send email')
-      }
-      setStatus('✅ Email sent successfully!')
-      showNotification('Email sent successfully! 📧', 'success')
-    } catch (e: any) {
-      const errorMsg = e.message || 'Error sending email.'
-      setStatus(`❌ ${errorMsg}`)
-      showNotification(errorMsg, 'error')
-    }
+  setStatus('📧 Sending email...')
+  try {
+    const res = await fetch(`${API_BASE}/api/send-email`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: to, summary: edited }) // <- keys must match backend
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data?.error || 'Failed to send email')
+    setStatus('✅ Email sent successfully!')
+    showNotification('Email sent successfully! 📧', 'success')
+  } catch (e: any) {
+    const errorMsg = e.message || 'Error sending email.'
+    setStatus(`❌ ${errorMsg}`)
+    showNotification(errorMsg, 'error')
   }
+}
+
 
   const createShare = async () => {
     setStatus('🔗 Creating shareable link...')
