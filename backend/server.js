@@ -25,8 +25,9 @@ app.get("/api/health", (req, res) => {
 });
 
 // ✅ Hugging Face Summarization
+// ✅ Hugging Face Summarization
 async function summarizeWithHF(text) {
-  const model = process.env.HF_MODEL || "facebook/bart-large-cnn"; 
+  const model = process.env.HF_MODEL || "facebook/bart-large-cnn";
   const url = `https://api-inference.huggingface.co/models/${model}`;
 
   const response = await fetch(url, {
@@ -36,17 +37,13 @@ async function summarizeWithHF(text) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      inputs: text,
-      parameters: {
-        max_length: 300,
-        min_length: 60,
-        do_sample: false,
-      },
+      inputs: text,   // ✅ only "inputs"
     }),
   });
 
   if (!response.ok) {
-    throw new Error(`HF API failed: ${response.statusText}`);
+    const errorText = await response.text();
+    throw new Error(`HF API failed: ${response.status} - ${errorText}`);
   }
 
   const data = await response.json();
@@ -55,6 +52,7 @@ async function summarizeWithHF(text) {
   }
   return JSON.stringify(data); // fallback
 }
+
 
 // ✅ Summarize API
 app.post("/api/summarize", async (req, res) => {
