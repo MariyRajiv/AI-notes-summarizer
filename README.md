@@ -109,7 +109,5 @@ npm run dev
 
 - ✅ Source code (frontend + backend)
 - ✅ Working instructions & detailed run steps
-- ✅ README with deployment steps (Vercel + Replit)
-- ☐ Deployed links (fill after you deploy):
-  - Frontend (Vercel): `https://...`
-  - Backend (Replit): `https://...`
+- ✅ README with deployment steps (Replit)
+
